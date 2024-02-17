@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Speech-to-Text Translator</title>
+  <!-- Add Bootstrap CSS link here -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css">
+  <style>
+    * {
+      margin: 10px;
+      font-family: 'Arial', sans-serif; /* Change to your preferred font */
+    }
+    body {
+      background-color: #f8f9fa; /* Change to your preferred background color */
+      color: #343a40; /* Change to your preferred text color */
+    }
+    .hidden {
+      display: none;
+    }
+    #welcomeContainer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    #mainContent {
+      text-align: center;
+    }
+    h1 {
+      color: #007bff; /* Change to your preferred heading color */
+    }
+    button {
+      background-color: #28a745; /* Change to your preferred button background color */
+      color: #ffffff; /* Change to your preferred button text color */
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-5" id="welcomeContainer">
+    <h1>Welcome to Speech-to-Text Translator </h1>
+    <button class="btn btn-primary" id="continueButton">Continue</button>
+  </div>
+  <div id="mainContent" class="hidden">
+    <!-- Your existing content here -->
+    <h1>Speech-to-Text Translator Group-24</h1>
+    <div class="form-group">
+      <label for="languageSelect">Select Language:</label>
+      <select class="form-control" id="languageSelect">
+        <option value="en">English</option>
+        <option value="te">Telugu</option>
+        <!-- Add more language options as needed -->
+      </select>
+      <label for="audioUpload">Upload Audio File:</label>
+      <input type="file" class="form-control" id="audioUpload">
+    </div>
+    <div class="form-group">
+      <button class="btn btn-primary" id="recordButton">Record</button>
+      <button class="btn btn-success" id="submitButton">Submit</button>
+    </div>
+    <div class="form-group">
+      <textarea class="form-control" id="outputText" rows="5" readonly></textarea>
+    </div>
+  </div>
+  <!-- Add Bootstrap JS link and any other required scripts here -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.min.js"></script>
+  <script>
+    let welcomeClicked = false;
+
+    // Function to remove welcome container from DOM
+    function removeWelcomeContainer() {
+      const welcomeContainer = document.getElementById('welcomeContainer');
+      welcomeContainer.parentNode.removeChild(welcomeContainer);
+    }
+
+    // Function to toggle between welcome message and main content
+    function toggleContent() {
+      if (!welcomeClicked) {
+        removeWelcomeContainer();
+        document.getElementById('mainContent').classList.remove('hidden');
+        welcomeClicked = true;
+      }
+    }
+
+    // Attach click event to the continue button
+    document.getElementById('continueButton').addEventListener('click', toggleContent);
+
+    let isRecording = false;
+    let recordedChunks = [];
+    let uploadedFile;
+    let recordedAudioBlob;
+    let mediaRecorder;
+
+    const recordButton = document.getElementById("recordButton");
+    const submitButton = document.getElementById("submitButton");
+    const languageSelect = document.getElementById("languageSelect");
+    const outputText = document.getElementById("outputText");
+
+    recordButton.addEventListener("click", function () {
+      if (!isRecording) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+          mediaRecorder = new MediaRecorder(stream);
+          recordedChunks = [];
+
+          mediaRecorder.ondataavailable = function (e) {
+            recordedChunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = function () {
+            recordedAudioBlob = new Blob(recordedChunks, { type: "audio/wav" });
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          recordButton.innerText = "Stop Recording";
+        }).catch(function (err) {
+          console.error("Error accessing microphone:", err);
+        });
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        recordButton.innerText = "Record";
+      }
+    });
+
+    const audioUpload = document.getElementById("audioUpload");
+
+    audioUpload.addEventListener("change", function (event) {
+      uploadedFile = event.target.files[0];
+      if (uploadedFile) {
+        const fileReader = new FileReader();
+        fileReader.onload = function () {
+          uploadedArrayBuffer = fileReader.result;
+        };
+        fileReader.readAsArrayBuffer(uploadedFile);
+      }
+    });
+
+    submitButton.addEventListener("click", function () {
+      if (recordedAudioBlob || uploadedFile) {
+        const formData = new FormData();
+
+        if (recordedAudioBlob) {
+          formData.append("audio", recordedAudioBlob, "recorded_audio.wav");
+        } else if (uploadedFile) {
+          formData.append("audio", uploadedFile, uploadedFile.name);
+        }
+
+        formData.append("language", languageSelect.value);
+
+        fetch("/process_audio", {
+          method: "POST",
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              outputText.value = "Translated Text : " + data.language;
+            } else {
+              outputText.value = data.message;
+            }
+          })
+          .catch((error) => {
+            console.error("Error communicating with the backend:", error);
+            outputText.value = "Backend communication failed.";
+          });
+
+        if (recordedAudioBlob) {
+          const downloadLink = document.createElement("a");
+          downloadLink.href = URL.createObjectURL(recordedAudioBlob);
+          downloadLink.download = "recorded_audio.wav";
+          downloadLink.style.display = "none";
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          URL.revokeObjectURL(downloadLink.href);
+          document.body.removeChild(downloadLink);
+        }
+      } else {
+        outputText.value = "Please record audio or upload a file and select a language before submitting.";
+      }
+    });
+  </script>
+</body>
+</html>
